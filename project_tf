@@ -1,0 +1,171 @@
+/* terraform {
+  required_version = ">=1.1.0"
+}
+
+provider "azurerm" {
+
+  features {}
+  /* client_id="8d83d388-5274-4ece-8cb9-35bcb7bdb717"
+  client_secret="mZa7Q~FT4J4AJrUnnxKKotxT6iKFqJo.dzhgV"
+  tenant_id="144f41d9-3a44-420c-a571-64ea858d21d2"
+  subscription_id="ef3deb78-5f0b-43b8-be97-e019bf012778" */
+//}
+
+terraform {
+  required_version = ">=1.0.0"
+}
+
+provider "azurerm" {
+  features {}
+  client_id       = "8d83d388-5274-4ece-8cb9-35bcb7bdb717"
+  client_secret   = "mZa7Q~FT4J4AJrUnnxKKotxT6iKFqJo.dzhgV"
+  tenant_id       = "144f41d9-3a44-420c-a571-64ea858d21d2"
+  subscription_id = "ef3deb78-5f0b-43b8-be97-e019bf012778"
+}
+
+resource "azurerm_resource_group" "rmrg" {
+  name     = "rmrg"
+  location = "eastus"
+}
+
+resource "azurerm_virtual_network" "rmvnet" {
+  name                = "rmvnet"
+  location            = "eastus"
+  resource_group_name = azurerm_resource_group.rmrg.name
+  address_space       = ["10.0.0.0/16"]
+}
+
+resource "azurerm_subnet" "rmsubnet" {
+  name                 = "rmsubnet"
+  address_prefixes     = ["10.0.1.0/24"]
+  virtual_network_name = azurerm_virtual_network.rmvnet.name
+  resource_group_name  = azurerm_resource_group.rmrg.name
+}
+
+resource "azurerm_public_ip" "rmpip1" {
+  name                = "rmpip1"
+  resource_group_name = azurerm_resource_group.rmrg.name
+  location            = azurerm_resource_group.rmrg.location
+  allocation_method   = "Dynamic"
+}
+
+resource "azurerm_virtual_machine" "rmvm" {
+  resource_group_name   = azurerm_resource_group.rmrg.name
+  name                  = "rmvm"
+  vm_size               = "Standard_DS1_v2"
+  location              = azurerm_resource_group.rmrg.location
+  network_interface_ids = [azurerm_network_interface.examplenic.id]
+
+  storage_image_reference {
+    publisher = "Canonical"
+    offer     = "UbuntuServer"
+    sku       = "18.04-LTS"
+    version   = "latest"
+  }
+
+  storage_os_disk {
+    name              = "myosdisk1"
+    caching           = "ReadWrite"
+    create_option     = "FromImage"
+    managed_disk_type = "Standard_LRS"
+  }
+
+  os_profile {
+    computer_name  = "linuxvm"
+    admin_username = "azureuser"
+    admin_password = "Welcome123!"
+  }
+
+  os_profile_linux_config {
+    disable_password_authentication = false
+  }
+  tags = {
+    environment = "staging"
+  }
+}
+
+resource "azurerm_network_interface" "examplenic" {
+  name                = "examplenic1"
+  location            = azurerm_resource_group.rmrg.location
+  resource_group_name = azurerm_resource_group.rmrg.name
+
+ip_configuration {
+    name                          = "rmipconfig"
+    subnet_id                     = azurerm_subnet.rmsubnet.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.rmpip1.id
+  }
+}
+
+resource "azurerm_network_security_group" "rmnsg" {
+  name                = "rmnsg"
+  location            = azurerm_resource_group.rmrg.location
+  resource_group_name = azurerm_resource_group.rmrg.name
+
+  security_rule {
+    name                       = "sshaccess"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "rmnsg" {
+  subnet_id                 = azurerm_subnet.rmsubnet.id
+  network_security_group_id = azurerm_network_security_group.rmnsg.id
+}
+
+resource "azurerm_lb" "rmlb" {
+  name                = "rmloadbalancer"
+  location            = "eastus"
+  resource_group_name = azurerm_resource_group.rmrg.name
+
+  frontend_ip_configuration {
+    name                 = "PublicIPAddress"
+    public_ip_address_id = azurerm_public_ip.rmpip1.id
+  }
+}
+
+resource "azurerm_lb_backend_address_pool" "rmbackend" {
+  loadbalancer_id = azurerm_lb.rmlb.id
+  name            = "BackEndAddressPool"
+}
+
+resource "azurerm_storage_account" "rmsacc" {
+  name                     = "rmstoracc"
+  resource_group_name      = azurerm_resource_group.rmrg.name
+  location                 = azurerm_resource_group.rmrg.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+
+  tags = {
+    environment = "infrastructure"
+  }
+}
+
+resource "azurerm_storage_container" "rmsc" {
+  name                  = "rmsc"
+  storage_account_name  = azurerm_storage_account.rmsacc.name
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_share" "rmss" {
+  name                 = "rmss"
+  storage_account_name = azurerm_storage_account.rmsacc.name
+  quota                = 50
+}
+
+resource "azurerm_storage_queue" "rmsq" {
+  name                 = "rmsq"
+  storage_account_name = azurerm_storage_account.rmsacc.name
+}
+
+resource "azurerm_storage_table" "rmst" {
+  name                 = "rmst"
+  storage_account_name = azurerm_storage_account.rmsacc.name
+}

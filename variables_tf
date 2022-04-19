@@ -1,0 +1,9 @@
+variable "resource_group" {
+  type    = string
+  default = "rmrg"
+}
+
+variable "location" {
+  type    = string
+  default = "eastus"
+}
